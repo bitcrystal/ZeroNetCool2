@@ -17,13 +17,13 @@ from Crypt import CryptConnection
 
 class Connection(object):
     __slots__ = (
-        "sock", "sock_wrapped", "ip", "port", "cert_pin", "target_onion", "id", "protocol", "type", "server", "unpacker", "req_id",
+        "sock", "sock_wrapped", "ip", "port", "cert_pin", "target_onion", "target_i2p", "id", "protocol", "type", "server", "unpacker", "req_id",
         "handshake", "crypt", "connected", "event_connected", "closed", "start_time", "last_recv_time",
         "last_message_time", "last_send_time", "last_sent_time", "incomplete_buff_recv", "bytes_recv", "bytes_sent", "cpu_time", "send_lock",
         "last_ping_delay", "last_req_time", "last_cmd_sent", "last_cmd_recv", "bad_actions", "sites", "name", "updateName", "waiting_requests", "waiting_streams"
     )
 
-    def __init__(self, server, ip, port, sock=None, target_onion=None):
+    def __init__(self, server, ip, port, sock=None, target_onion=None, target_i2p=None):
         self.sock = sock
         self.ip = ip
         self.port = port
@@ -31,6 +31,7 @@ class Connection(object):
         if "#" in ip:
             self.ip, self.cert_pin = ip.split("#")
         self.target_onion = target_onion  # Requested onion adress
+        self.target_i2p = target_i2p # Requested i2p address
         self.id = server.last_connection_id
         server.last_connection_id += 1
         self.protocol = "?"
@@ -86,6 +87,9 @@ class Connection(object):
     def getValidSites(self):
         return [key for key, val in self.server.tor_manager.site_onions.items() if val == self.target_onion]
 
+    def getValidI2PSites(self):
+        return [key for key, val in self.server.i2p_manager.site_onions.items() if val == self.target_i2p]
+
     def badAction(self, weight=1):
         self.bad_actions += weight
         if self.bad_actions > 40:
@@ -104,6 +108,10 @@ class Connection(object):
             if not self.server.tor_manager or not self.server.tor_manager.enabled:
                 raise Exception("Can't connect to onion addresses, no Tor controller present")
             self.sock = self.server.tor_manager.createSocket(self.ip, self.port)
+        elif self.ip.endswith(".i2p"):
+            if not self.server.i2p_manager or not self.server.i2p_manager.enabled:
+                raise Exception("Can't connect to onion addresses, no I2P controller present")
+            self.sock = self.server.i2p_manager.createSocket(self.ip, self.port)
         else:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -250,10 +258,14 @@ class Connection(object):
         # No TLS for onion connections
         if self.ip.endswith(".onion"):
             crypt_supported = []
+        elif self.i2p.endswith(".i2p"):
+            crypt_supported = []
         else:
             crypt_supported = CryptConnection.manager.crypt_supported
         # No peer id for onion connections
         if self.ip.endswith(".onion") or self.ip in config.ip_local:
+            peer_id = ""
+        elif self.ip.endswith(".i2p") or self.ip in config.ip_local:
             peer_id = ""
         else:
             peer_id = self.server.peer_id
@@ -262,6 +274,10 @@ class Connection(object):
             self.target_onion = self.handshake.get("target_ip").replace(".onion", "")  # My onion address
             if not self.server.tor_manager.site_onions.values():
                 self.server.log.warning("Unknown target onion address: %s" % self.target_onion)
+        elif self.handshake and self.handshake.get("target_ip", "").endswith(".i2p") and self.server.i2p_manager.start_onions:
+            self.target_i2p = self.handshake.get("target_ip").replace(".i2p", "")  # My i2p address
+            if not self.server.i2p_manager.site_onions.values():
+                self.server.log.warning("Unknown target i2p address: %s" % self.target_i2p)
 
         handshake = {
             "version": config.version,
@@ -278,12 +294,15 @@ class Connection(object):
             handshake["onion"] = self.target_onion
         elif self.ip.endswith(".onion"):
             handshake["onion"] = self.server.tor_manager.getOnion("global")
-
+        elif self.target_i2p:
+            handshake["i2p"] = self.target_i2p
+        elif self.ip.endswith(".i2p"):
+            handshake["i2p"] = self.server.i2p_manager.getOnion("global")
         return handshake
 
     def setHandshake(self, handshake):
         self.handshake = handshake
-        if handshake.get("port_opened", None) is False and "onion" not in handshake:  # Not connectable
+        if handshake.get("port_opened", None) is False and (("onion" not in handshake) or ("i2p" not in handshake)):  # Not connectable
             self.port = 0
         else:
             self.port = handshake["fileserver_port"]  # Set peer fileserver port
@@ -291,10 +310,16 @@ class Connection(object):
         if handshake.get("onion") and not self.ip.endswith(".onion"):  # Set incoming connection's onion address
             self.ip = handshake["onion"] + ".onion"
             self.updateName()
+        elif handshake.get("i2p") and not self.ip.endswith(".i2p"):  # Set incoming connection's i2p address
+            self.ip = handshake["i2p"] + ".i2p"
+            self.updateName()
+
 
         # Check if we can encrypt the connection
         if handshake.get("crypt_supported") and handshake["peer_id"] not in self.server.broken_ssl_peer_ids:
             if self.ip.endswith(".onion"):
+                crypt = None
+            elif self.ip.endswith(".i2p"):
                 crypt = None
             elif handshake.get("crypt"):  # Recommended crypt by server
                 crypt = handshake["crypt"]

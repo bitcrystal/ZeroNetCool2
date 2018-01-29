@@ -48,7 +48,7 @@ class UiWebsocket(object):
             # Add open fileserver port message or closed port error to homepage at first request after start
             self.site.page_requested = True  # Dont add connection notification anymore
             file_server = sys.modules["main"].file_server
-            if file_server.port_opened is None or file_server.tor_manager.start_onions is None:
+            if file_server.port_opened is None or file_server.tor_manager.start_onions is None or file_server.i2p_manager.start_onions is None:
                 self.site.page_requested = False  # Not ready yet, check next time
             else:
                 try:
@@ -103,6 +103,7 @@ class UiWebsocket(object):
                 ])
 
         file_server = sys.modules["main"].file_server
+        nothing = True
         if file_server.port_opened is True:
             self.site.notifications.append([
                 "done",
@@ -118,6 +119,7 @@ class UiWebsocket(object):
                 """),
                 10000
             ])
+            nothing = False
         elif config.tor == "always" and file_server.tor_manager.start_onions is not False:
             self.site.notifications.append([
                 "error",
@@ -127,6 +129,7 @@ class UiWebsocket(object):
                 """),
                 0
             ])
+            nothing = False
         elif file_server.port_opened is False and file_server.tor_manager.start_onions:
             self.site.notifications.append([
                 "done",
@@ -136,12 +139,44 @@ class UiWebsocket(object):
                 """).format(config.fileserver_port),
                 10000
             ])
-        else:
+            nothing = False
+        if config.i2p == "always" and file_server.i2p_manager.start_onions:
+            self.site.notifications.append([
+                "done",
+                _(u"""
+                {_[I2P mode active, every connection using I2P route.]}<br>
+                {_[Successfully started I2P hidden services.]}
+                """), 
+                10000
+            ])
+            nothing = False
+        elif config.i2p == "always" and file_server.i2p_manager.start_onions is not False:
+            self.site.notifications.append([
+                "error",
+                _(u"""
+                {_[I2P mode active, every connection using I2P route.]}<br>
+                {_[Unable to start hidden services, please check your config.]}
+                """), 
+                0
+            ])
+            nothing = False
+        elif file_server.port_opened is False and file_server.i2p_manager.start_onions:
+            self.site.notifications.append([
+                "done",
+                _(u"""
+                {_[Successfully started I2P hidden services.]}<br>
+                {_[For faster connections open <b>{0}</b> port on your router.]}
+                """).format(config.fileserver_port),
+                10000
+            ])
+            nothing = False
+        if nothing:
             self.site.notifications.append([
                 "error",
                 _(u"""
                 {_[Your connection is restricted. Please, open <b>{0}</b> port on your router]}<br>
                 {_[or configure Tor to become a full member of the ZeroNet network.]}
+                {_[or configure I2P to become a full member of the ZeroNet network.]}
                 """).format(config.fileserver_port),
                 0
             ])
@@ -311,6 +346,8 @@ class UiWebsocket(object):
             "fileserver_port": config.fileserver_port,
             "tor_enabled": sys.modules["main"].file_server.tor_manager.enabled,
             "tor_status": sys.modules["main"].file_server.tor_manager.status,
+            "i2p_enabled": sys.modules["main"].file_server.i2p_manager.enabled,
+            "i2p_status": sys.modules["main"].file_server.i2p_manager.status,
             "ui_ip": config.ui_ip,
             "ui_port": config.ui_port,
             "version": config.version,
@@ -479,7 +516,7 @@ class UiWebsocket(object):
                 self.response(to, "ok")
         else:
             if len(site.peers) == 0:
-                if sys.modules["main"].file_server.port_opened or sys.modules["main"].file_server.tor_manager.start_onions:
+                if sys.modules["main"].file_server.port_opened or sys.modules["main"].file_server.tor_manager.start_onions or sys.modules["main"].file_server.i2p_manager.start_onions:
                     if notification:
                         self.cmd("notification", ["info", _["No peers found, but your content is ready to access."]])
                     if callback:

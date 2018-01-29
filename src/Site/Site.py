@@ -453,7 +453,7 @@ class Site(object):
             self.bad_files["content.json"] = 1
         else:
             self.content_updated = time.time()
-
+ 
         self.updateWebsocket(updated=True)
 
     # Update site by redownload all content.json
@@ -474,12 +474,24 @@ class Site(object):
 
         # Find out my ip and port
         tor_manager = self.connection_server.tor_manager
+        i2p_manager = self.connection_server.i2p_manager
+        found_ip = False
         if tor_manager and tor_manager.enabled and tor_manager.start_onions:
             my_ip = tor_manager.getOnion(self.address)
             if my_ip:
+                found_ip = True
                 my_ip += ".onion"
             my_port = config.fileserver_port
-        else:
+        
+        if not found_ip:
+            if i2p_manager and i2p_manager.enabled and i2p_manager.start_onions:
+               my_ip = i2p_manager.getOnion(self.address)
+               if my_ip:
+                  found_ip = True
+                  my_ip += ".i2p"
+               my_port = config.fileserver_port
+
+        if not found_ip:
             my_ip = config.ip_external
             if self.connection_server.port_opened:
                 my_port = config.fileserver_port
@@ -892,8 +904,12 @@ class Site(object):
         # Filter trackers based on supported networks
         if config.disable_udp:
             trackers = [tracker for tracker in trackers if not tracker.startswith("udp://")]
+
         if self.connection_server and self.connection_server.tor_manager and not self.connection_server.tor_manager.enabled:
             trackers = [tracker for tracker in trackers if ".onion" not in tracker]
+
+        if self.connection_server and self.connection_server.i2p_manager and not self.connection_server.i2p_manager.enabled:
+            trackers = [tracker for tracker in trackers if ".i2p" not in tracker]
 
         if trackers and (mode == "update" or mode == "more"):  # Only announce on one tracker, increment the queried tracker id
             self.last_tracker_id += 1
@@ -909,8 +925,12 @@ class Site(object):
             # Type of addresses they can reach me
             if self.connection_server.port_opened:
                 add_types.append("ip4")
+
             if self.connection_server.tor_manager and self.connection_server.tor_manager.start_onions:
                 add_types.append("onion")
+
+            if self.connection_server.i2p_manager and self.connection_server.i2p_manager.start_onions:
+                add_types.append("i2p")
         else:
             my_peer_id = ""
 
@@ -1034,6 +1054,7 @@ class Site(object):
             return []
 
         tor_manager = self.connection_server.tor_manager
+        i2p_manager = self.connection_server.i2p_manager
         for connection in self.connection_server.connections:
             if not connection.connected and time.time() - connection.start_time > 20:  # Still not connected after 20s
                 continue
@@ -1041,6 +1062,10 @@ class Site(object):
             if peer:
                 if connection.target_onion and tor_manager.start_onions and tor_manager.getOnion(self.address) != connection.target_onion:
                     continue
+
+                elif connection.target_i2p and i2p_manager.start_onions and i2p_manager.getOnion(self.address) != connection.target_i2p:
+                    continue
+
                 if not peer.connection:
                     peer.connect(connection)
                 back.append(peer)

@@ -195,9 +195,14 @@ class Config(object):
 
         self.parser.add_argument('--open_browser', help='Open homepage in web browser automatically',
                                  nargs='?', const="default_browser", metavar='browser_name')
-        self.parser.add_argument('--homepage', help='Web interface Homepage', default='1HeLLo4uzjaLetFx6NH3PMwFP3qbRbTf3D',
+       # self.parser.add_argument('--homepage', help='Web interface Homepage', default='1HeLLo4uzjaLetFx6NH3PMwFP3qbRbTf3D',
+        #                         metavar='address')
+        self.parser.add_argument('--homepage', help='Web interface Homepage', default='1Jwmx33xCtuRe2UReHHxkritZ1nfuyXrrc',
                                  metavar='address')
-        self.parser.add_argument('--updatesite', help='Source code update site', default='1UPDatEDxnvHDo7TXvq6AEBARfNkyfxsp',
+
+        #self.parser.add_argument('--updatesite', help='Source code update site', default='1UPDatEDxnvHDo7TXvq6AEBARfNkyfxsp',
+        #                         metavar='address')
+        self.parser.add_argument('--updatesite', help='Source code update site', default='1KVLauCV3Ag9ZPry9cr1WvKQcyaev8gG2m',
                                  metavar='address')
         self.parser.add_argument('--size_limit', help='Default site size limit in MB', default=10, type=int, metavar='limit')
         self.parser.add_argument('--file_size_limit', help='Maximum per file size limit in MB', default=10, type=int, metavar='limit')
@@ -244,6 +249,18 @@ class Config(object):
         self.parser.add_argument('--tor_proxy', help='Tor proxy address', metavar='ip:port', default='127.0.0.1:9050')
         self.parser.add_argument('--tor_password', help='Tor controller password', metavar='password')
         self.parser.add_argument('--tor_hs_limit', help='Maximum number of hidden services', metavar='limit', type=int, default=10)
+
+
+        self.parser.add_argument('--i2p', help='enable: Use only for i2p peers, always: Use I2P for every connection', choices=["disable", "enable", "always"], default='enable')
+        self.parser.add_argument('--i2p_start', help='I2P start', metavar='i2p_start', type='bool', choices=[True, False], default=False)
+        self.parser.add_argument('--i2p_socks_proxy', help='I2P socks proxy address', metavar='ip:port', default='127.0.0.1:1080')
+        self.parser.add_argument('--i2p_http_proxy', help='I2P proxy address', metavar='ip:port', default='127.0.0.1:4444') 
+        self.parser.add_argument('--i2p_bob_server', help='I2P BOB server address', metavar='ip:port', default='127.0.0.1:2827')
+        self.parser.add_argument('--i2p_cookiefile_path', help='I2P Cookiefile Path', metavar='cookiefile_path', default='/myservices/tor/control_auth_cookie')
+        self.parser.add_argument('--i2p_controller', help='I2P controller address', metavar='i2p_ip:i2p_port', default='127.0.0.1:1234')
+        self.parser.add_argument('--i2p_port_range_faktor', help='I2P port_range_faktor', metavar='i2p_port_range_faktor', type=int, default=10)
+        self.parser.add_argument('--i2p_debug', help='I2P debug', metavar='i2p_debug', type='bool', choices=[True, False], default=False)
+        self.parser.add_argument('--i2p_hs_limit', help='Maximum number of hidden services', metavar='i2p_limit', type=int, default=10)
 
         self.parser.add_argument('--version', action='version', version='ZeroNet %s r%s' % (self.version, self.rev))
         self.parser.add_argument('--end', help='Stop multi value argument parsing', action='store_true')

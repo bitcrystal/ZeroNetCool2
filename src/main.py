@@ -126,16 +126,32 @@ if config.proxy:
     import urllib2
     logging.info("Patching sockets to socks proxy: %s" % config.proxy)
     if config.fileserver_ip == "*":
-        config.fileserver_ip = '127.0.0.1'  # Do not accept connections anywhere but localhost
+       config.fileserver_ip = '127.0.0.1'  # Do not accept connections anywhere but localhost
     SocksProxy.monkeyPatch(*config.proxy.split(":"))
 elif config.tor == "always":
-    from util import SocksProxy
-    import urllib2
-    logging.info("Patching sockets to tor socks proxy: %s" % config.tor_proxy)
-    if config.fileserver_ip == "*":
-        config.fileserver_ip = '127.0.0.1'  # Do not accept connections anywhere but localhost
-    SocksProxy.monkeyPatch(*config.tor_proxy.split(":"))
-    config.disable_udp = True
+    if config.i2p == "disable":
+       from util import SocksProxy
+       import urllib2
+       logging.info("Patching sockets to tor socks proxy: %s" % config.tor_proxy)
+       if config.fileserver_ip == "*":
+          config.fileserver_ip = '127.0.0.1'  # Do not accept connections anywhere but localhost
+       SocksProxy.monkeyPatch(*config.tor_proxy.split(":"))
+       config.disable_udp = True
+    else:
+       config.tor = "enable"
+       config.i2p = "enable"
+elif config.i2p == "always":
+    if config.tor == "disable":
+       from util import SocksProxy
+       import urllib2
+       logging.info("Patching sockets to i2p socks proxy: %s" % config.i2p_proxy)
+       if config.fileserver_ip == "*":
+          config.fileserver_ip = '127.0.0.1'  # Do not accept connections anywhere but localhost
+       SocksProxy.monkeyPatch(*config.i2p_proxy.split(":"))
+       config.disable_udp = True
+    else:
+       config.tor = "enable"
+       config.i2p = "enable"
 elif config.bind:
     bind = config.bind
     if ":" not in config.bind:
@@ -486,7 +502,7 @@ class Actions(object):
             print json.dumps(res, indent=2, ensure_ascii=False)
         except Exception, err:
             print "Unknown response (%s): %s" % (err, res)
-
+     
     def getConfig(self):
         import json
         print json.dumps(config.getServerInfo(), indent=2, ensure_ascii=False)

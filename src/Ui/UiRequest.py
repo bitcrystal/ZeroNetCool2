@@ -588,6 +588,7 @@ class UiRequest(object):
         ws = self.env.get("wsgi.websocket")
         if ws:
             wrapper_key = self.get["wrapper_key"]
+            print wrapper_key
             # Find site by wrapper_key
             site = None
             for site_check in self.server.sites.values():
@@ -710,4 +711,4 @@ class UiRequest(object):
                 <h1>%s</h1>
                 <h2>%s</h3>
             """ % (title, cgi.escape(message))
-
+        

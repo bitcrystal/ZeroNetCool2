@@ -17,6 +17,7 @@ from Crypt import CryptHash
 from Tor import TorManager
 from Site import SiteManager
 
+from I2P import I2PManager
 
 class ConnectionServer:
     def __init__(self, ip=None, port=None, request_handler=None):
@@ -27,10 +28,24 @@ class ConnectionServer:
         self.port_opened = None
         self.peer_blacklist = SiteManager.peer_blacklist
 
+        config_tor = None
+        config_i2p = None
+
+        if config.tor == "disable":
+           config_tor = "disabled"
+ 
+        if config.i2p == "disable":
+           config_i2p = "disabled"
+
         if config.tor != "disabled":
             self.tor_manager = TorManager(self.ip, self.port)
         else:
             self.tor_manager = None
+
+        if config.i2p != "disabled":
+            self.i2p_manager = I2PManager(self.ip, self.port)
+        else:
+            self.i2p_manager = None
 
         self.connections = []  # Connections
         self.whitelist = config.ip_local  # No flood protection on this ips
@@ -109,6 +124,9 @@ class ConnectionServer:
         if ip.endswith(".onion") and self.tor_manager.start_onions and site:  # Site-unique connection for Tor
             site_onion = self.tor_manager.getOnion(site.address)
             key = ip + site_onion
+        elif ip.endswith(".i2p") and self.i2p_manager.start_onions and site:  # Site-unique connection for I2P
+            site_i2p = self.i2p_manager.getOnion(site.address)
+            key = ip + site_i2p
         else:
             key = ip
 
@@ -130,6 +148,10 @@ class ConnectionServer:
                     if ip.endswith(".onion") and self.tor_manager.start_onions and ip.replace(".onion", "") != connection.target_onion:
                         # For different site
                         continue
+                    if ip.endswith(".i2p") and self.i2p_manager.start_onions and ip.replace(".i2p", "") != connection.target_i2p:
+                        # For different site
+                        continue
+
                     if not connection.connected and create:
                         succ = connection.event_connected.get()  # Wait for connection
                         if not succ:
@@ -146,7 +168,9 @@ class ConnectionServer:
 
             try:
                 if ip.endswith(".onion") and self.tor_manager.start_onions and site:  # Lock connection to site
-                    connection = Connection(self, ip, port, target_onion=site_onion)
+                    connection = Connection(self, ip, port, target_onion=site_onion, target_i2p=None)
+                elif ip.endswith(".i2p") and self.i2p_manager.start_onions and site:  # Lock connection to site
+                    connection = Connection(self, ip, port, target_onion=None, target_i2p=site_i2p)
                 else:
                     connection = Connection(self, ip, port)
                 self.ips[key] = connection
@@ -175,6 +199,10 @@ class ConnectionServer:
         if connection.target_onion:
             if self.ips.get(connection.ip + connection.target_onion) == connection:
                 del self.ips[connection.ip + connection.target_onion]
+        elif connection.target_i2p:
+            if self.ips.get(connection.ip + connection.target_i2p) == connection:
+                del self.ips[connection.ip + connection.target_i2p]
+
         # Cert pinned connection
         if connection.cert_pin and self.ips.get(connection.ip + "#" + connection.cert_pin) == connection:
             del self.ips[connection.ip + "#" + connection.cert_pin]
@@ -192,7 +220,7 @@ class ConnectionServer:
             last_message_time = 0
             s = time.time()
             for connection in self.connections[:]:  # Make a copy
-                if connection.ip.endswith(".onion"):
+                if connection.ip.endswith(".onion") or connection.ip.endswith(".i2p"):
                     timeout_multipler = 2
                 else:
                     timeout_multipler = 1
@@ -216,7 +244,7 @@ class ConnectionServer:
                     # Idle more than 20 min and we have not sent request in last 10 sec
                     if not connection.ping():
                         connection.close("[Cleanup] Ping timeout")
-
+                        
                 elif idle > 10 * timeout_multipler and connection.incomplete_buff_recv > 0:
                     # Incomplete data with more than 10 sec idle
                     connection.close("[Cleanup] Connection buff stalled")
@@ -260,7 +288,7 @@ class ConnectionServer:
 
             if time.time() - s > 0.01:
                 self.log.debug("Connection cleanup in %.3fs" % (time.time() - s))
-
+                
     @util.Noparallel(blocking=False)
     def checkMaxConnections(self):
         if len(self.connections) < config.global_connected_limit:

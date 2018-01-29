@@ -61,7 +61,7 @@ class SiteStorage(object):
         except Exception, err:
             raise Exception("dbschema.json is not a valid JSON: %s" % err)
         return schema
-
+       
     # Return db class
     def getDb(self):
         if not self.db:

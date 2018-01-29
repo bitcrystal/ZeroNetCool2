@@ -70,6 +70,16 @@ class FileRequest(object):
                 )
                 self.connection.badAction(5)
                 return False
+        elif "site" in params and self.connection.target_i2p:
+            valid_sites = self.connection.getValidI2PSites()
+            if params["site"] not in valid_sites:
+                self.response({"error": "Invalid site"})
+                self.connection.log(
+                    "Site lock violation: %s not in %s, target i2p: %s" %
+                    (params["site"], valid_sites, self.connection.target_i2p)
+                )
+                self.connection.badAction(5)
+                return False
 
         if cmd == "update":
             event = "%s update %s %s" % (self.connection.id, params["site"], params["inner_path"])
@@ -291,6 +301,13 @@ class FileRequest(object):
             if site.addPeer(*address):
                 added += 1
 
+        # Add sent peers to site
+        for packed_address in params.get("peers_i2p", []):
+            address = helper.unpackI2PAddress(packed_address)
+            got_peer_keys.append("%s:%s" % address)
+            if site.addPeer(*address):
+                added += 1
+
         # Send back peers that is not in the sent list and connectable (not port 0)
         packed_peers = helper.packPeers(site.getConnectablePeers(params["need"], got_peer_keys))
 
@@ -299,7 +316,7 @@ class FileRequest(object):
             if config.verbose:
                 self.log.debug(
                     "Added %s peers to %s using pex, sending back %s" %
-                    (added, site, len(packed_peers["ip4"]) + len(packed_peers["onion"]))
+                    (added, site, len(packed_peers["ip4"]) + len(packed_peers["onion"]) + len(packed_peers["i2p"]))
                 )
 
         back = {}
@@ -307,6 +324,8 @@ class FileRequest(object):
             back["peers"] = packed_peers["ip4"]
         if packed_peers["onion"]:
             back["peers_onion"] = packed_peers["onion"]
+        if packed_peers["i2p"]:
+            back["peers_i2p"] = packed_peers["i2p"]
 
         self.response(back)
 
@@ -344,9 +363,15 @@ class FileRequest(object):
     def findHashIds(self, site, hash_ids, limit=100):
         back_ip4 = {}
         back_onion = {}
+        back_i2p = {}
         found = site.worker_manager.findOptionalHashIds(hash_ids, limit=limit)
 
         for hash_id, peers in found.iteritems():
+            back_i2p[hash_id] = list(itertools.islice((
+                helper.packI2PAddress(peer.ip, peer.port)
+                for peer in peers
+                if peer.ip.endswith("i2p")
+            ), 50))
             back_onion[hash_id] = list(itertools.islice((
                 helper.packOnionAddress(peer.ip, peer.port)
                 for peer in peers
@@ -355,9 +380,9 @@ class FileRequest(object):
             back_ip4[hash_id] = list(itertools.islice((
                 helper.packAddress(peer.ip, peer.port)
                 for peer in peers
-                if not peer.ip.endswith("onion")
+                if ((not peer.ip.endswith("onion")) and (not peer.ip.endswith("i2p")))
             ), 50))
-        return back_ip4, back_onion
+        return back_ip4, back_onion, back_i2p
 
     def actionFindHashIds(self, params):
         site = self.sites.get(params["site"])
@@ -370,15 +395,18 @@ class FileRequest(object):
         event_key = "%s_findHashIds_%s_%s" % (self.connection.ip, params["site"], len(params["hash_ids"]))
         if self.connection.cpu_time > 0.5 or not RateLimit.isAllowed(event_key, 60 * 5):
             time.sleep(0.1)
-            back_ip4, back_onion = self.findHashIds(site, params["hash_ids"], limit=10)
+            back_ip4, back_onion, back_i2p = self.findHashIds(site, params["hash_ids"], limit=10)
         else:
-            back_ip4, back_onion = self.findHashIds(site, params["hash_ids"])
+            back_ip4, back_onion, back_i2p = self.findHashIds(site, params["hash_ids"])
         RateLimit.called(event_key)
 
         # Check my hashfield
         if self.server.tor_manager and self.server.tor_manager.site_onions.get(site.address):  # Running onion
             my_ip = helper.packOnionAddress(self.server.tor_manager.site_onions[site.address], self.server.port)
             my_back = back_onion
+        elif self.server.i2p_manager and self.server.i2p_manager.site_onions.get(site.address):  # Running i2p
+            my_ip = helper.packI2PAddress(self.server.i2p_manager.site_onions[site.address], self.server.port)
+            my_back = back_i2p
         elif config.ip_external:  # External ip defined
             my_ip = helper.packAddress(config.ip_external, self.server.port)
             my_back = back_ip4
@@ -399,10 +427,10 @@ class FileRequest(object):
 
         if config.verbose:
             self.log.debug(
-                "Found: IP4: %s, Onion: %s for %s hashids in %.3fs" %
-                (len(back_ip4), len(back_onion), len(params["hash_ids"]), time.time() - s)
+                "Found: IP4: %s, Onion: %s, I2P: %s for %s hashids in %.3fs" %
+                (len(back_ip4), len(back_onion), len(back_i2p), len(params["hash_ids"]), time.time() - s)
             )
-        self.response({"peers": back_ip4, "peers_onion": back_onion})
+        self.response({"peers": back_ip4, "peers_onion": back_onion, "peers_i2p": back_i2p})
 
     def actionSetHashfield(self, params):
         site = self.sites.get(params["site"])
