@@ -55,9 +55,9 @@ class Worker(object):
                     time.sleep(0.1)
                     if task["done"] or task["workers_num"] == 0:
                         if config.verbose:
-                           self.manager.log.debug("%s: %s, picked task free after %ss sleep. (done: %s)" % (
-                               self.key, task["inner_path"], 0.1 * sleep_i, task["done"]
-                           ))
+                            self.manager.log.debug("%s: %s, picked task free after %ss sleep. (done: %s)" % (
+                                self.key, task["inner_path"], 0.1 * sleep_i, task["done"]
+                            ))
                         break
 
             if task["done"]:
